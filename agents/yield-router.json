@@ -1,0 +1,12 @@
+{
+  "id": "yield-router",
+  "name": "YieldRouter",
+  "category": "Yield Optimisation",
+  "chain": "bsc-testnet",
+  "status": "replace-before-submission",
+  "protocols": ["Venus", "Lista"],
+  "endpoint": "REPLACE_WITH_AGENT_STUDIO_ENDPOINT",
+  "erc8004Identity": "REPLACE_WITH_AGENT_ID",
+  "erc8183Service": "REPLACE_WITH_SERVICE_ID",
+  "benchmark": {"label": "Pilot benchmark", "period": "7-day snapshot", "sampleSize": 6, "metric": "net APR after fees", "value": "9.8%"}
+}

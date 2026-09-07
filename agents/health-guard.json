@@ -1,0 +1,12 @@
+{
+  "id": "health-guard",
+  "name": "HealthGuard",
+  "category": "Health Factor Monitoring",
+  "chain": "bsc-testnet",
+  "status": "replace-before-submission",
+  "protocols": ["Venus"],
+  "endpoint": "REPLACE_WITH_AGENT_STUDIO_ENDPOINT",
+  "erc8004Identity": "REPLACE_WITH_AGENT_ID",
+  "erc8183Service": "REPLACE_WITH_SERVICE_ID",
+  "benchmark": {"label": "Pilot benchmark", "period": "testnet", "sampleSize": 1, "metric": "alert polling target", "value": "15s"}
+}
