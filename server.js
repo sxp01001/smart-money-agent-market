@@ -5,7 +5,7 @@ const path = require('path');
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4173);
-const bscRpcHost = process.env.BSC_RPC_HOST || 'bsc-testnet.publicnode.com';
+const bscRpcHost = process.env.BSC_RPC_HOST || 'bsc-testnet-rpc.publicnode.com';
 const bscChainId = 97;
 const mime = {
   '.html': 'text/html; charset=utf-8',
