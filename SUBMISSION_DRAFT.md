@@ -8,6 +8,14 @@ Smart Money Agent Market
 
 The auditable marketplace for discovering, comparing and safely activating BNB Chain agents across LP rebalancing, grid trading, yield optimisation and health-factor protection.
 
+## Live links
+
+- Demo: <https://smart-money-agent-market.onrender.com/>
+- GitHub: <https://github.com/sxp01001/smart-money-agent-market>
+
+The demo is hosted on Render's free tier. The first request after inactivity may
+take up to about 50 seconds while the service wakes up.
+
 ## Project description
 
 Smart Money Agent Market is a focused front end for BNB Chain's Agent Studio ecosystem. It gives users one place to discover agents, compare real outcomes, inspect risk and cost, and activate a scoped session without giving up custody. Every listing is structured around a job, protocol coverage, recent outcome, response time and risk level.
@@ -30,9 +38,9 @@ The MVP covers all four required categories equally: LP Sentinel for concentrate
 
 ## Submission checklist
 
-- [ ] Push this folder to a public GitHub repository.
-- [ ] Deploy the front end to a public HTTPS URL.
+- [x] Push this folder to a public GitHub repository.
+- [x] Deploy the front end to a public HTTPS URL.
 - [ ] Replace demo adapters with live BSC testnet or mainnet agent endpoints before submission.
 - [ ] Add ERC-8004 identity, ERC-8183 receipt and x402/B402 receipt links.
-- [ ] Add the final GitHub and demo URLs to the form.
+- [ ] Add the GitHub and demo URLs above to the submission form.
 - [ ] Never commit a private key, API key or `.env` file.

@@ -1,8 +1,16 @@
 # Smart Money Agent Market
 
-An MVP submission for BNB Chain's **Smart Money Era: Build the Era** hackathon.
-It focuses on the required marketplace journey: discover, compare and activate
-agents across all four categories.
+An online MVP submission for BNB Chain's **Smart Money Era: Build the Era**
+hackathon. It focuses on the required marketplace journey: discover, compare
+and activate agents across all four categories.
+
+## Online demo
+
+Open the deployed marketplace at
+<https://smart-money-agent-market.onrender.com/>.
+
+It runs on Render's free tier. After a period without traffic, the first request
+may take up to about 50 seconds while the service wakes up.
 
 ## What works now
 
@@ -13,7 +21,7 @@ agents across all four categories.
 - Comparison table and a wallet-aware signed session consent flow for testnet demos.
 - No wallet custody, no withdrawals and no fabricated transactions.
 
-## Run locally
+## Local development
 
 Requires Node.js 18 or newer.
 
@@ -21,15 +29,15 @@ Requires Node.js 18 or newer.
 npm start
 ```
 
-Open <http://localhost:4173>.
+Open <http://localhost:4173> for local development. The public demo is the
+Render URL above.
 
-## Before submission
+## Current status and roadmap
 
 The four catalog entries are demo adapters and are intentionally marked
 `DEMO ADAPTER / BSC READY` in the UI. Replace them with real Agent Studio
-deployments and real contract/endpoint metadata before submitting. Add the public deployed URL
-and this repository URL to the Google submission form. Do not put private keys
-in the repository.
+deployments and real contract/endpoint metadata for the final production
+submission. Do not put private keys in the repository.
 
 Recommended next integrations:
 
