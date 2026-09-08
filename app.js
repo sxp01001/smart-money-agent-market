@@ -43,7 +43,7 @@ async function selectProvider(preferTestnet = false) {
   }
   return state.provider && providers.includes(state.provider) ? state.provider : providers[0] || null;
 }
-function openActivation(agent) { state.selected = agent; document.querySelector('#modalTitle').textContent = agent.name; document.querySelector('#modalDescription').textContent = agent.description; document.querySelector('#permissionText').textContent = agent.category === 'Health Factor Monitoring' ? 'Read positions + alert only' : `Execute allowlisted ${agent.protocol} calls`; document.querySelector('#analysisPanel').hidden = agent.id !== 'lp-sentinel'; document.querySelector('#analysisResult').textContent = 'No analysis requested yet.'; document.querySelector('#activationModal').showModal(); }
+function openActivation(agent) { state.selected = agent; document.querySelector('#modalTitle').textContent = agent.name; document.querySelector('#modalDescription').textContent = agent.description; document.querySelector('#permissionText').textContent = agent.category === 'Health Factor Monitoring' ? 'Read positions + alert only' : `Execute allowlisted ${agent.protocol} calls`; document.querySelector('#analysisPanel').hidden = agent.id !== 'lp-sentinel'; document.querySelector('#analysisResult').textContent = 'No analysis requested yet.'; document.querySelector('#positionsResult').textContent = 'No wallet position lookup requested.'; document.querySelector('#activationModal').showModal(); }
 
 grid.addEventListener('change', event => { const id = event.target.dataset.compare; if (!id) return; event.target.checked ? state.compare.add(id) : state.compare.delete(id); updateTray(); });
 grid.addEventListener('click', event => { const id = event.target.dataset.activate; if (id) openActivation(agents.find(agent => agent.id === id)); });
@@ -69,6 +69,17 @@ document.querySelector('#analyzeLp').addEventListener('click', async () => {
     if (!response.ok || !data.ok) throw new Error(data.error || 'Agent unavailable');
     result.textContent = data.live ? `Block #${data.block.toLocaleString()} · Pool ${data.pool.slice(0, 8)}... · Liquidity ${data.liquidity} · Price ${data.priceToken1PerToken0 ?? 'n/a'} · ${data.recommendation}` : `${data.message} (block #${data.block.toLocaleString()})`;
   } catch (error) { result.textContent = `Read-only analysis unavailable: ${error.message}`; }
+});
+document.querySelector('#loadPositions').addEventListener('click', async () => {
+  const result = document.querySelector('#positionsResult');
+  if (!state.walletAccount) { result.textContent = 'Connect your wallet first; this lookup is read-only.'; return; }
+  result.textContent = 'Reading your LP positions...';
+  try {
+    const response = await fetch(`/api/agents/lp-sentinel/positions?owner=${encodeURIComponent(state.walletAccount)}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Position lookup unavailable');
+    result.textContent = data.positions.length ? `Found ${data.positions.length} LP position(s). ${data.positions.map(position => `NFT #${position.tokenId}: ticks ${position.tickLower} to ${position.tickUpper}, liquidity ${position.liquidity}`).join(' ')}` : `No LP NFT positions found for ${data.owner.slice(0, 8)}... (read-only).`;
+  } catch (error) { result.textContent = `Position lookup unavailable: ${error.message}`; }
 });
 
 function openComparison() {

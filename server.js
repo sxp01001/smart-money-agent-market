@@ -9,6 +9,7 @@ const bscRpcHost = process.env.BSC_RPC_HOST || 'bsc-testnet-rpc.publicnode.com';
 const bscChainId = 97;
 const pancakeV3Factory = (process.env.PANCAKE_V3_FACTORY || '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865').toLowerCase();
 const defaultPool = (process.env.LP_SENTINEL_POOL_ADDRESS || '0x01354b3fd448e253572989b3fe15213cbed6565a').toLowerCase();
+const positionManager = '0x427bf5b37357632377ecbec9de3626c71a5396c1';
 const defaultTokenA = (process.env.LP_SENTINEL_TOKEN_A || '0xae13d989dac2f0debff460ac112a837c89baa7cd').toLowerCase();
 const defaultTokenB = (process.env.LP_SENTINEL_TOKEN_B || '0x66e972502a34a625828c544a1914e8d8cc2a9de5').toLowerCase();
 const feeTiers = [100, 500, 2500, 3000, 10000];
@@ -83,6 +84,32 @@ function decodeAddress(value) { return `0x${value.slice(-40)}`.toLowerCase(); }
 function decodeUint(value) { return BigInt(value || '0x0'); }
 function encodeGetPool(tokenA, tokenB, fee) { return `0x1698ee82${addressWord(tokenA)}${addressWord(tokenB)}${uintWord(fee)}`; }
 function callData(to, data) { return rpcCall('eth_call', [{ to, data }, 'latest']); }
+function decodeSigned(value, bits) { const raw = BigInt(`0x${value}`); const limit = 1n << BigInt(bits - 1); return Number(raw >= limit ? raw - (1n << BigInt(bits)) : raw); }
+
+async function lpPositions(res, owner) {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(owner || '')) return sendJson(res, 400, { ok: false, error: 'A valid wallet address is required.' });
+  try {
+    const balance = Number(decodeUint(await callData(positionManager, `0x70a08231${addressWord(owner)}`)));
+    const positions = [];
+    for (let index = 0; index < Math.min(balance, 20); index += 1) {
+      const tokenId = decodeUint(await callData(positionManager, `0x2f745c59${uintWord(index)}`));
+      const raw = (await callData(positionManager, `0x99fbab88${tokenId.toString(16).padStart(64, '0')}`)).replace(/^0x/, '');
+      if (raw.length < 8 * 64) continue;
+      positions.push({
+        tokenId: tokenId.toString(),
+        token0: decodeAddress(raw.slice(64 * 2, 64 * 3)),
+        token1: decodeAddress(raw.slice(64 * 3, 64 * 4)),
+        feeTier: Number(BigInt(`0x${raw.slice(64 * 4, 64 * 5)}`)),
+        tickLower: decodeSigned(raw.slice(64 * 5, 64 * 6), 24),
+        tickUpper: decodeSigned(raw.slice(64 * 6, 64 * 7), 24),
+        liquidity: BigInt(`0x${raw.slice(64 * 7, 64 * 8)}`).toString()
+      });
+    }
+    return sendJson(res, 200, { ok: true, live: true, chain: 'BSC testnet', chainId: 97, owner: owner.toLowerCase(), positionManager, walletPositionCount: balance, positions, source: `PancakeSwap V3 NonfungiblePositionManager ${positionManager}`, updatedAt: new Date().toISOString() });
+  } catch (error) {
+    return sendJson(res, 502, { ok: false, error: 'LP position data unavailable', detail: error.message });
+  }
+}
 
 async function lpRecommendation(res) {
   try {
@@ -130,8 +157,10 @@ function sendJson(res, status, payload) {
 }
 
 http.createServer((req, res) => {
-  if (req.url === '/api/bsc-status') return bscStatus(res);
-  if (req.url === '/api/agents/lp-sentinel/recommendation') return lpRecommendation(res);
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+  if (requestUrl.pathname === '/api/bsc-status') return bscStatus(res);
+  if (requestUrl.pathname === '/api/agents/lp-sentinel/recommendation') return lpRecommendation(res);
+  if (requestUrl.pathname === '/api/agents/lp-sentinel/positions') return lpPositions(res, requestUrl.searchParams.get('owner'));
   let requested;
   try { requested = decodeURIComponent((req.url || '/').split('?')[0]); }
   catch (_) { res.writeHead(400); return res.end('Bad request'); }
