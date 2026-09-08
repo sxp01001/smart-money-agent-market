@@ -110,8 +110,17 @@ async function createScopedSession() {
       await updateWalletState(accounts[0], provider);
       if (!state.walletAccount) { showToast('Connect your wallet before using BSC testnet mode.'); return; }
       if (parseChainId(state.walletChainId) !== 97) {
-        showToast(`Website detected ${chainLabel(state.walletChainId)}. Switch to BNB Smart Chain Testnet (Chain ID 97), then try again.`);
-        return;
+        try {
+          await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x61' }] });
+          await updateWalletState(state.walletAccount, provider);
+        } catch (_) {
+          showToast(`Website detected ${chainLabel(state.walletChainId)}. Approve the wallet network switch to BNB Smart Chain Testnet (Chain ID 97).`);
+          return;
+        }
+        if (parseChainId(state.walletChainId) !== 97) {
+          showToast(`Website still detects ${chainLabel(state.walletChainId)}. Select BNB Smart Chain Testnet (Chain ID 97) in the connected wallet.`);
+          return;
+        }
       }
       await provider.request({ method: 'personal_sign', params: [`Smart Money session\n${payload}`, state.walletAccount] });
       showToast(`${agent.name} session consent signed on BSC testnet. No funds moved.`);
@@ -135,8 +144,8 @@ async function refreshBscStatus() {
 render();
 refreshBscStatus();
 for (const provider of injectedProviders()) {
-  provider.on?.('accountsChanged', accounts => updateWalletState(accounts[0], provider).catch(() => {}));
-  provider.on?.('chainChanged', chainId => { state.walletChainId = chainId; updateWalletState(null, provider).catch(() => {}); showToast('Wallet network updated.'); });
+  provider.on?.('accountsChanged', accounts => { if (!state.provider || state.provider === provider) updateWalletState(accounts[0], provider).catch(() => {}); });
+  provider.on?.('chainChanged', chainId => { if (!state.provider || state.provider === provider) { state.walletChainId = chainId; updateWalletState(null, provider).catch(() => {}); showToast('Wallet network updated.'); } });
 }
 selectProvider(true).then(provider => provider && updateWalletState(null, provider)).catch(() => {});
 setInterval(refreshBscStatus, 30000);
