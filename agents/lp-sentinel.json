@@ -3,9 +3,11 @@
   "name": "LP Sentinel",
   "category": "Rebalancing",
   "chain": "bsc-testnet",
-  "status": "replace-before-submission",
+  "status": "live-read-only-testnet",
   "protocols": ["PancakeSwap V3"],
-  "endpoint": "REPLACE_WITH_AGENT_STUDIO_ENDPOINT",
+  "endpoint": "/api/agents/lp-sentinel/recommendation",
+  "dataSource": "PancakeSwap V3 Factory and pool state via BSC testnet JSON-RPC",
+  "execution": "read-only; no transaction submission",
   "erc8004Identity": "REPLACE_WITH_AGENT_ID",
   "erc8183Service": "REPLACE_WITH_SERVICE_ID",
   "benchmark": {"label": "Pilot benchmark", "period": "30-day replay", "sampleSize": 42, "metric": "fee uplift vs static range", "value": "18.4%"}

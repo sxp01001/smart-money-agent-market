@@ -19,7 +19,7 @@ function filteredAgents() {
 function render() {
   const list = filteredAgents();
   empty.hidden = list.length > 0;
-  grid.innerHTML = list.map(agent => `<article class="agent-card"><div class="agent-top"><div class="agent-icon ${agent.icon}">${agent.initials}</div><span class="live-tag demo-tag">DEMO ADAPTER / BSC READY</span></div><div class="agent-category">${agent.category}</div><h3>${agent.name}</h3><p>${agent.description}</p><div class="agent-metrics"><div class="metric"><span>${agent.outcome}</span><strong title="${agent.benchmark}">View benchmark</strong></div><div class="metric"><span>Risk</span><strong>${agent.risk}</strong></div><div class="metric"><span>Response target</span><strong>${agent.latency}</strong></div></div><div class="agent-foot"><label class="compare-check"><input type="checkbox" data-compare="${agent.id}" ${state.compare.has(agent.id) ? 'checked' : ''}> Compare</label><button class="button button-primary" data-activate="${agent.id}" type="button">Activate</button></div></article>`).join('');
+  grid.innerHTML = list.map(agent => `<article class="agent-card"><div class="agent-top"><div class="agent-icon ${agent.icon}">${agent.initials}</div><span class="live-tag ${agent.id === 'lp-sentinel' ? '' : 'demo-tag'}">${agent.id === 'lp-sentinel' ? 'READ-ONLY AGENT / BSC TESTNET' : 'DEMO ADAPTER / BSC READY'}</span></div><div class="agent-category">${agent.category}</div><h3>${agent.name}</h3><p>${agent.description}</p><div class="agent-metrics"><div class="metric"><span>${agent.outcome}</span><strong title="${agent.benchmark}">View benchmark</strong></div><div class="metric"><span>Risk</span><strong>${agent.risk}</strong></div><div class="metric"><span>Response target</span><strong>${agent.latency}</strong></div></div><div class="agent-foot"><label class="compare-check"><input type="checkbox" data-compare="${agent.id}" ${state.compare.has(agent.id) ? 'checked' : ''}> Compare</label><button class="button button-primary" data-activate="${agent.id}" type="button">${agent.id === 'lp-sentinel' ? 'Analyze / activate' : 'Activate'}</button></div></article>`).join('');
   updateTray();
 }
 
@@ -43,7 +43,7 @@ async function selectProvider(preferTestnet = false) {
   }
   return state.provider && providers.includes(state.provider) ? state.provider : providers[0] || null;
 }
-function openActivation(agent) { state.selected = agent; document.querySelector('#modalTitle').textContent = agent.name; document.querySelector('#modalDescription').textContent = agent.description; document.querySelector('#permissionText').textContent = agent.category === 'Health Factor Monitoring' ? 'Read positions + alert only' : `Execute allowlisted ${agent.protocol} calls`; document.querySelector('#activationModal').showModal(); }
+function openActivation(agent) { state.selected = agent; document.querySelector('#modalTitle').textContent = agent.name; document.querySelector('#modalDescription').textContent = agent.description; document.querySelector('#permissionText').textContent = agent.category === 'Health Factor Monitoring' ? 'Read positions + alert only' : `Execute allowlisted ${agent.protocol} calls`; document.querySelector('#analysisPanel').hidden = agent.id !== 'lp-sentinel'; document.querySelector('#analysisResult').textContent = 'No analysis requested yet.'; document.querySelector('#activationModal').showModal(); }
 
 grid.addEventListener('change', event => { const id = event.target.dataset.compare; if (!id) return; event.target.checked ? state.compare.add(id) : state.compare.delete(id); updateTray(); });
 grid.addEventListener('click', event => { const id = event.target.dataset.activate; if (id) openActivation(agents.find(agent => agent.id === id)); });
@@ -60,6 +60,16 @@ document.querySelector('#closeCompare').addEventListener('click', () => document
 document.querySelector('#spendCap').addEventListener('input', event => { document.querySelector('#spendOutput').textContent = `${event.target.value} USDC`; });
 document.querySelectorAll('.mode').forEach(button => button.addEventListener('click', () => { state.mode = button.dataset.mode; document.querySelectorAll('.mode').forEach(item => item.classList.toggle('active', item === button)); }));
 document.querySelector('#confirmActivation').addEventListener('click', createScopedSession);
+document.querySelector('#analyzeLp').addEventListener('click', async () => {
+  const result = document.querySelector('#analysisResult');
+  result.textContent = 'Reading PancakeSwap V3 testnet data...';
+  try {
+    const response = await fetch('/api/agents/lp-sentinel/recommendation');
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Agent unavailable');
+    result.textContent = data.live ? `Block #${data.block.toLocaleString()} · Pool ${data.pool.slice(0, 8)}... · Liquidity ${data.liquidity} · Price ${data.priceToken1PerToken0 ?? 'n/a'} · ${data.recommendation}` : `${data.message} (block #${data.block.toLocaleString()})`;
+  } catch (error) { result.textContent = `Read-only analysis unavailable: ${error.message}`; }
+});
 
 function openComparison() {
   const selected = agents.filter(agent => state.compare.has(agent.id)).slice(0, 3);
