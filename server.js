@@ -103,17 +103,21 @@ async function lpRecommendation(res) {
     if (!pool) {
       return sendJson(res, 200, { ok: true, live: false, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', status: 'no-pool-found', message: 'No configured PancakeSwap V3 testnet pool was found for the selected pair. Set LP_SENTINEL_POOL_ADDRESS or provide a funded testnet pool.', source: `PancakeSwap V3 Factory ${pancakeV3Factory}`, updatedAt: new Date().toISOString() });
     }
-    const [token0Hex, token1Hex, liquidityHex, slot0Hex, feeHex] = await Promise.all([
-      callData(pool, '0x0dfe1681'), callData(pool, '0xd21220a7'), callData(pool, '0x1a686502'), callData(pool, '0x3850c7bd'), callData(pool, '0xddca3f43')
+    const [token0Hex, token1Hex, liquidityHex, slot0Hex, feeHex, spacingHex] = await Promise.all([
+      callData(pool, '0x0dfe1681'), callData(pool, '0xd21220a7'), callData(pool, '0x1a686502'), callData(pool, '0x3850c7bd'), callData(pool, '0xddca3f43'), callData(pool, '0xd0c93a7c')
     ]);
     const token0 = decodeAddress(token0Hex);
     const token1 = decodeAddress(token1Hex);
     const liquidity = decodeUint(liquidityHex).toString();
     const sqrtPriceX96 = decodeUint(slot0Hex.slice(0, 66));
     const tick = Number(BigInt(`0x${slot0Hex.slice(66, 130)}`));
+    const tickSpacing = Number(decodeUint(spacingHex));
+    const bandSize = Math.max(tickSpacing * 10, 1);
+    const lowerTick = Math.floor(tick / bandSize) * bandSize - bandSize;
+    const upperTick = lowerTick + bandSize * 2;
     const sqrtPrice = Number(sqrtPriceX96) / 2 ** 96;
     const priceToken1PerToken0 = sqrtPrice * sqrtPrice;
-    const body = { ok: true, live: true, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', pool, feeTier: Number(decodeUint(feeHex)), token0, token1, liquidity, tick, priceToken1PerToken0: Number.isFinite(priceToken1PerToken0) ? Number(priceToken1PerToken0.toPrecision(8)) : null, recommendation: 'Monitor the current range; this read-only pilot has not been configured to submit a rebalance transaction.', source: `PancakeSwap V3 pool ${pool}`, updatedAt: new Date().toISOString() };
+    const body = { ok: true, live: true, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', pool, feeTier: Number(decodeUint(feeHex)), token0, token1, liquidity, tick, tickSpacing, suggestedRange: { lowerTick, upperTick, method: 'heuristic monitoring band around the live tick' }, priceToken1PerToken0: Number.isFinite(priceToken1PerToken0) ? Number(priceToken1PerToken0.toPrecision(8)) : null, recommendation: `Current tick ${tick} is inside the suggested monitoring band ${lowerTick} to ${upperTick}. This is a read-only heuristic, not a submitted rebalance.`, source: `PancakeSwap V3 pool ${pool}`, updatedAt: new Date().toISOString() };
     return sendJson(res, 200, body);
   } catch (error) {
     return sendJson(res, 502, { ok: false, live: false, chain: 'BSC testnet', chainId: 97, error: 'PancakeSwap testnet data unavailable', detail: error.message });
