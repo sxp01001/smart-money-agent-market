@@ -5,7 +5,7 @@ const agents = [
   { id: 'health-guard', initials: 'HF', name: 'HealthGuard', category: 'Health Factor Monitoring', icon: 'icon-blue', description: 'Monitors lending positions, estimates liquidation distance and sends an actionable top-up or repay plan.', protocol: 'Venus', outcome: 'Pilot benchmark', benchmark: '24/7 polling target, 15s alert threshold, testnet', risk: 'Low', latency: '1.6s', fit: 85, endpoint: '/agents/health-guard' }
 ];
 
-const state = { category: 'all', query: '', sort: 'fit', compare: new Set(), selected: null, mode: 'simulate', walletAccount: null, walletChainId: null };
+const state = { category: 'all', query: '', sort: 'fit', compare: new Set(), selected: null, mode: 'simulate', walletAccount: null, walletChainId: null, provider: null };
 const grid = document.querySelector('#agentGrid');
 const empty = document.querySelector('#emptyState');
 const tray = document.querySelector('#compareTray');
@@ -31,6 +31,18 @@ function updateTray() {
 }
 
 function showToast(message) { toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
+function parseChainId(value) { if (typeof value !== 'string') return null; const text = value.trim().toLowerCase(); const radix = text.startsWith('0x') ? 16 : 10; const parsed = Number.parseInt(text, radix); return Number.isInteger(parsed) ? parsed : null; }
+function chainLabel(value) { const id = parseChainId(value); return id === 97 ? 'BSC testnet' : id === 56 ? 'BSC mainnet' : `Chain ${value}`; }
+function injectedProviders() { if (!window.ethereum) return []; const list = Array.isArray(window.ethereum.providers) ? window.ethereum.providers : [window.ethereum]; return list.filter(Boolean); }
+async function selectProvider(preferTestnet = false) {
+  const providers = injectedProviders();
+  if (preferTestnet) {
+    for (const provider of providers) {
+      try { if (parseChainId(await provider.request({ method: 'eth_chainId' })) === 97) return provider; } catch (_) { /* ignore unavailable provider */ }
+    }
+  }
+  return state.provider && providers.includes(state.provider) ? state.provider : providers[0] || null;
+}
 function openActivation(agent) { state.selected = agent; document.querySelector('#modalTitle').textContent = agent.name; document.querySelector('#modalDescription').textContent = agent.description; document.querySelector('#permissionText').textContent = agent.category === 'Health Factor Monitoring' ? 'Read positions + alert only' : `Execute allowlisted ${agent.protocol} calls`; document.querySelector('#activationModal').showModal(); }
 
 grid.addEventListener('change', event => { const id = event.target.dataset.compare; if (!id) return; event.target.checked ? state.compare.add(id) : state.compare.delete(id); updateTray(); });
@@ -59,26 +71,29 @@ function openComparison() {
 }
 
 async function connectWallet() {
-  if (!window.ethereum) return showToast('No injected wallet detected. Demo mode remains available.');
+  const provider = await selectProvider(true);
+  if (!provider) return showToast('No injected wallet detected. Demo mode remains available.');
   try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    await updateWalletState(accounts[0]);
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    await updateWalletState(accounts[0], provider);
     showToast(`Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
   } catch (_) { showToast('Wallet connection was cancelled.'); }
 }
 
-async function updateWalletState(account = null) {
-  if (!window.ethereum) return;
-  const accounts = account ? [account] : await window.ethereum.request({ method: 'eth_accounts' });
+async function updateWalletState(account = null, providerOverride = null) {
+  const provider = providerOverride || await selectProvider(Boolean(state.mode === 'testnet'));
+  if (!provider) return;
+  state.provider = provider;
+  const accounts = account ? [account] : await provider.request({ method: 'eth_accounts' });
   state.walletAccount = accounts[0] || null;
-  state.walletChainId = await window.ethereum.request({ method: 'eth_chainId' });
+  state.walletChainId = await provider.request({ method: 'eth_chainId' });
   const button = document.querySelector('#connectButton');
   if (!state.walletAccount) {
     button.textContent = 'Connect wallet';
     button.classList.remove('wallet-connected');
     return;
   }
-  const network = Number.parseInt(state.walletChainId, 16) === 97 ? 'BSC testnet' : `Chain ${Number.parseInt(state.walletChainId, 16)}`;
+  const network = chainLabel(state.walletChainId);
   button.textContent = `${state.walletAccount.slice(0, 6)}...${state.walletAccount.slice(-4)} · ${network}`;
   button.classList.add('wallet-connected');
 }
@@ -88,16 +103,17 @@ async function createScopedSession() {
   const cap = document.querySelector('#spendCap').value;
   const payload = JSON.stringify({ agent: agent.id, endpoint: agent.endpoint, mode: state.mode, dailySpendCapUsdc: Number(cap), allowlist: [agent.protocol], expiresIn: '24h' });
   if (state.mode === 'testnet') {
-    if (!window.ethereum) { showToast('Install or unlock MetaMask before using BSC testnet mode.'); return; }
+    const provider = await selectProvider(true);
+    if (!provider) { showToast('Install or unlock a wallet before using BSC testnet mode.'); return; }
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-      await updateWalletState(accounts[0]);
+      const accounts = await provider.request({ method: 'eth_accounts' });
+      await updateWalletState(accounts[0], provider);
       if (!state.walletAccount) { showToast('Connect your wallet before using BSC testnet mode.'); return; }
-      if (state.walletChainId?.toLowerCase() !== '0x61') {
-        showToast('Switch MetaMask to BNB Smart Chain Testnet (Chain ID 97), then try again.');
+      if (parseChainId(state.walletChainId) !== 97) {
+        showToast(`Website detected ${chainLabel(state.walletChainId)}. Switch to BNB Smart Chain Testnet (Chain ID 97), then try again.`);
         return;
       }
-      await window.ethereum.request({ method: 'personal_sign', params: [`Smart Money session\n${payload}`, state.walletAccount] });
+      await provider.request({ method: 'personal_sign', params: [`Smart Money session\n${payload}`, state.walletAccount] });
       showToast(`${agent.name} session consent signed on BSC testnet. No funds moved.`);
       document.querySelector('#activationModal').close();
       return;
@@ -110,7 +126,7 @@ async function refreshBscStatus() {
   try {
     const response = await fetch('/api/bsc-status');
     const data = await response.json();
-    document.querySelector('#networkLabel').textContent = data.ok ? 'BSC connected' : 'BSC unavailable';
+    document.querySelector('#networkLabel').textContent = data.ok ? `${data.chain || 'BSC'} connected` : 'BSC unavailable';
     document.querySelector('#networkStatus').classList.toggle('offline', !data.ok);
     document.querySelector('#blockLabel').textContent = data.block ? `#${data.block.toLocaleString()}` : '';
   } catch (_) { document.querySelector('#networkLabel').textContent = 'Demo mode'; }
@@ -118,9 +134,9 @@ async function refreshBscStatus() {
 
 render();
 refreshBscStatus();
-if (window.ethereum) {
-  updateWalletState().catch(() => {});
-  window.ethereum.on?.('accountsChanged', accounts => updateWalletState(accounts[0]).catch(() => {}));
-  window.ethereum.on?.('chainChanged', chainId => { state.walletChainId = chainId; updateWalletState().catch(() => {}); showToast('Wallet network updated.'); });
+for (const provider of injectedProviders()) {
+  provider.on?.('accountsChanged', accounts => updateWalletState(accounts[0], provider).catch(() => {}));
+  provider.on?.('chainChanged', chainId => { state.walletChainId = chainId; updateWalletState(null, provider).catch(() => {}); showToast('Wallet network updated.'); });
 }
+selectProvider(true).then(provider => provider && updateWalletState(null, provider)).catch(() => {});
 setInterval(refreshBscStatus, 30000);

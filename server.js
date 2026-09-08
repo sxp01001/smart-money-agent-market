@@ -5,6 +5,8 @@ const path = require('path');
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4173);
+const bscRpcHost = process.env.BSC_RPC_HOST || 'bsc-testnet.publicnode.com';
+const bscChainId = 97;
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -16,7 +18,7 @@ const mime = {
 function bscStatus(res) {
   const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] });
   const request = https.request({
-    hostname: 'bsc-dataseed.binance.org',
+    hostname: bscRpcHost,
     path: '/',
     method: 'POST',
     headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) }
@@ -28,7 +30,7 @@ function bscStatus(res) {
         const parsed = JSON.parse(data);
         const block = parsed.result ? parseInt(parsed.result, 16) : null;
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(JSON.stringify({ ok: Number.isInteger(block), chain: 'BSC', chainId: 56, block }));
+        res.end(JSON.stringify({ ok: Number.isInteger(block), chain: 'BSC testnet', chainId: bscChainId, block }));
       } catch (_) {
         res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Invalid RPC response' }));
