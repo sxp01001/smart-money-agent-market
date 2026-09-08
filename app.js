@@ -5,7 +5,7 @@ const agents = [
   { id: 'health-guard', initials: 'HF', name: 'HealthGuard', category: 'Health Factor Monitoring', icon: 'icon-blue', description: 'Monitors lending positions, estimates liquidation distance and sends an actionable top-up or repay plan.', protocol: 'Venus', outcome: 'Pilot benchmark', benchmark: '24/7 polling target, 15s alert threshold, testnet', risk: 'Low', latency: '1.6s', fit: 85, endpoint: '/agents/health-guard' }
 ];
 
-const state = { category: 'all', query: '', sort: 'fit', compare: new Set(), selected: null, mode: 'simulate' };
+const state = { category: 'all', query: '', sort: 'fit', compare: new Set(), selected: null, mode: 'simulate', walletAccount: null, walletChainId: null };
 const grid = document.querySelector('#agentGrid');
 const empty = document.querySelector('#emptyState');
 const tray = document.querySelector('#compareTray');
@@ -60,15 +60,48 @@ function openComparison() {
 
 async function connectWallet() {
   if (!window.ethereum) return showToast('No injected wallet detected. Demo mode remains available.');
-  try { const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }); showToast(`Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`); } catch (_) { showToast('Wallet connection was cancelled.'); }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    await updateWalletState(accounts[0]);
+    showToast(`Wallet connected: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
+  } catch (_) { showToast('Wallet connection was cancelled.'); }
+}
+
+async function updateWalletState(account = null) {
+  if (!window.ethereum) return;
+  const accounts = account ? [account] : await window.ethereum.request({ method: 'eth_accounts' });
+  state.walletAccount = accounts[0] || null;
+  state.walletChainId = await window.ethereum.request({ method: 'eth_chainId' });
+  const button = document.querySelector('#connectButton');
+  if (!state.walletAccount) {
+    button.textContent = 'Connect wallet';
+    button.classList.remove('wallet-connected');
+    return;
+  }
+  const network = Number.parseInt(state.walletChainId, 16) === 97 ? 'BSC testnet' : `Chain ${Number.parseInt(state.walletChainId, 16)}`;
+  button.textContent = `${state.walletAccount.slice(0, 6)}...${state.walletAccount.slice(-4)} · ${network}`;
+  button.classList.add('wallet-connected');
 }
 
 async function createScopedSession() {
   const agent = state.selected;
   const cap = document.querySelector('#spendCap').value;
   const payload = JSON.stringify({ agent: agent.id, endpoint: agent.endpoint, mode: state.mode, dailySpendCapUsdc: Number(cap), allowlist: [agent.protocol], expiresIn: '24h' });
-  if (state.mode === 'testnet' && window.ethereum) {
-    try { await window.ethereum.request({ method: 'personal_sign', params: [`Smart Money session\n${payload}`, (await window.ethereum.request({ method: 'eth_requestAccounts' }))[0]] }); showToast(`${agent.name} session consent signed. No funds moved.`); document.querySelector('#activationModal').close(); return; } catch (_) { showToast('Signature cancelled; no session was created.'); return; }
+  if (state.mode === 'testnet') {
+    if (!window.ethereum) { showToast('Install or unlock MetaMask before using BSC testnet mode.'); return; }
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      await updateWalletState(accounts[0]);
+      if (!state.walletAccount) { showToast('Connect your wallet before using BSC testnet mode.'); return; }
+      if (state.walletChainId?.toLowerCase() !== '0x61') {
+        showToast('Switch MetaMask to BNB Smart Chain Testnet (Chain ID 97), then try again.');
+        return;
+      }
+      await window.ethereum.request({ method: 'personal_sign', params: [`Smart Money session\n${payload}`, state.walletAccount] });
+      showToast(`${agent.name} session consent signed on BSC testnet. No funds moved.`);
+      document.querySelector('#activationModal').close();
+      return;
+    } catch (_) { showToast('Signature cancelled; no session was created.'); return; }
   }
   document.querySelector('#activationModal').close(); showToast(`${agent.name} session staged in ${state.mode} mode. No funds moved.`);
 }
@@ -85,4 +118,9 @@ async function refreshBscStatus() {
 
 render();
 refreshBscStatus();
+if (window.ethereum) {
+  updateWalletState().catch(() => {});
+  window.ethereum.on?.('accountsChanged', accounts => updateWalletState(accounts[0]).catch(() => {}));
+  window.ethereum.on?.('chainChanged', chainId => { state.walletChainId = chainId; updateWalletState().catch(() => {}); showToast('Wallet network updated.'); });
+}
 setInterval(refreshBscStatus, 30000);
