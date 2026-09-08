@@ -67,7 +67,7 @@ document.querySelector('#analyzeLp').addEventListener('click', async () => {
     const response = await fetch('/api/agents/lp-sentinel/recommendation');
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || 'Agent unavailable');
-    result.textContent = data.live ? `Block #${data.block.toLocaleString()} · Pool ${data.pool.slice(0, 8)}... · Liquidity ${data.liquidity} · Price ${data.priceToken1PerToken0 ?? 'n/a'} · ${data.recommendation}` : `${data.message} (block #${data.block.toLocaleString()})`;
+    result.textContent = data.live ? `Block #${data.block.toLocaleString()} · Pool ${data.pool.slice(0, 8)}... · Liquidity ${data.liquidity} · Price ${data.priceToken1PerToken0 ?? 'n/a'} · Risk ${data.risk.level} · ${data.recommendation}` : `${data.message} (block #${data.block.toLocaleString()})`;
   } catch (error) { result.textContent = `Read-only analysis unavailable: ${error.message}`; }
 });
 document.querySelector('#loadPositions').addEventListener('click', async () => {
@@ -78,7 +78,7 @@ document.querySelector('#loadPositions').addEventListener('click', async () => {
     const response = await fetch(`/api/agents/lp-sentinel/positions?owner=${encodeURIComponent(state.walletAccount)}`);
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || 'Position lookup unavailable');
-    result.textContent = data.positions.length ? `Found ${data.positions.length} LP position(s). ${data.positions.map(position => `NFT #${position.tokenId}: ticks ${position.tickLower} to ${position.tickUpper}, liquidity ${position.liquidity}`).join(' ')}` : `No LP NFT positions found for ${data.owner.slice(0, 8)}... (read-only).`;
+    result.textContent = data.positions.length ? `Found ${data.positions.length} LP position(s). ${data.positions.map(position => `NFT #${position.tokenId}: ticks ${position.tickLower} to ${position.tickUpper}, liquidity ${position.liquidity}, risk ${position.risk?.level || 'unknown'} (${position.risk?.status || 'unavailable'})`).join(' ')}` : `No LP NFT positions found for ${data.owner.slice(0, 8)}... (read-only).`;
   } catch (error) { result.textContent = `Position lookup unavailable: ${error.message}`; }
 });
 

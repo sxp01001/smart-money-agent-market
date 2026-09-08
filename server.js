@@ -85,6 +85,15 @@ function decodeUint(value) { return BigInt(value || '0x0'); }
 function encodeGetPool(tokenA, tokenB, fee) { return `0x1698ee82${addressWord(tokenA)}${addressWord(tokenB)}${uintWord(fee)}`; }
 function callData(to, data) { return rpcCall('eth_call', [{ to, data }, 'latest']); }
 function decodeSigned(value, bits) { const raw = BigInt(`0x${value}`); const limit = 1n << BigInt(bits - 1); return Number(raw >= limit ? raw - (1n << BigInt(bits)) : raw); }
+function tickFromSlot0(value) { return decodeSigned(value.replace(/^0x/, '').slice(64, 128), 24); }
+function rangeRisk(currentTick, lowerTick, upperTick) {
+  if (!Number.isInteger(currentTick)) return { status: 'unavailable', level: 'unknown', distanceToBoundaryTicks: null };
+  if (currentTick < lowerTick || currentTick > upperTick) return { status: 'out of range', level: 'high', distanceToBoundaryTicks: 0 };
+  const distanceToBoundaryTicks = Math.min(currentTick - lowerTick, upperTick - currentTick);
+  const width = Math.max(upperTick - lowerTick, 1);
+  const ratio = distanceToBoundaryTicks / width;
+  return { status: ratio < 0.1 ? 'near boundary' : 'inside range', level: ratio < 0.1 ? 'high' : ratio < 0.25 ? 'medium' : 'low', distanceToBoundaryTicks };
+}
 
 async function lpPositions(res, owner) {
   if (!/^0x[a-fA-F0-9]{40}$/.test(owner || '')) return sendJson(res, 400, { ok: false, error: 'A valid wallet address is required.' });
@@ -95,7 +104,7 @@ async function lpPositions(res, owner) {
       const tokenId = decodeUint(await callData(positionManager, `0x2f745c59${uintWord(index)}`));
       const raw = (await callData(positionManager, `0x99fbab88${tokenId.toString(16).padStart(64, '0')}`)).replace(/^0x/, '');
       if (raw.length < 8 * 64) continue;
-      positions.push({
+      const position = {
         tokenId: tokenId.toString(),
         token0: decodeAddress(raw.slice(64 * 2, 64 * 3)),
         token1: decodeAddress(raw.slice(64 * 3, 64 * 4)),
@@ -103,7 +112,17 @@ async function lpPositions(res, owner) {
         tickLower: decodeSigned(raw.slice(64 * 5, 64 * 6), 24),
         tickUpper: decodeSigned(raw.slice(64 * 6, 64 * 7), 24),
         liquidity: BigInt(`0x${raw.slice(64 * 7, 64 * 8)}`).toString()
-      });
+      };
+      try {
+        const poolHex = await callData(pancakeV3Factory, encodeGetPool(position.token0, position.token1, position.feeTier));
+        const pool = decodeAddress(poolHex);
+        if (pool !== '0x0000000000000000000000000000000000000000') {
+          position.pool = pool;
+          position.currentTick = tickFromSlot0(await callData(pool, '0x3850c7bd'));
+          position.risk = rangeRisk(position.currentTick, position.tickLower, position.tickUpper);
+        }
+      } catch (_) { position.risk = { status: 'unavailable', level: 'unknown', distanceToBoundaryTicks: null }; }
+      positions.push(position);
     }
     return sendJson(res, 200, { ok: true, live: true, chain: 'BSC testnet', chainId: 97, owner: owner.toLowerCase(), positionManager, walletPositionCount: balance, positions, source: `PancakeSwap V3 NonfungiblePositionManager ${positionManager}`, updatedAt: new Date().toISOString() });
   } catch (error) {
@@ -140,11 +159,13 @@ async function lpRecommendation(res) {
     const tick = Number(BigInt(`0x${slot0Hex.slice(66, 130)}`));
     const tickSpacing = Number(decodeUint(spacingHex));
     const bandSize = Math.max(tickSpacing * 10, 1);
-    const lowerTick = Math.floor(tick / bandSize) * bandSize - bandSize;
-    const upperTick = lowerTick + bandSize * 2;
+    const centerTick = Math.round(tick / bandSize) * bandSize;
+    const lowerTick = centerTick - bandSize;
+    const upperTick = centerTick + bandSize;
     const sqrtPrice = Number(sqrtPriceX96) / 2 ** 96;
     const priceToken1PerToken0 = sqrtPrice * sqrtPrice;
-    const body = { ok: true, live: true, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', pool, feeTier: Number(decodeUint(feeHex)), token0, token1, liquidity, tick, tickSpacing, suggestedRange: { lowerTick, upperTick, method: 'heuristic monitoring band around the live tick' }, priceToken1PerToken0: Number.isFinite(priceToken1PerToken0) ? Number(priceToken1PerToken0.toPrecision(8)) : null, recommendation: `Current tick ${tick} is inside the suggested monitoring band ${lowerTick} to ${upperTick}. This is a read-only heuristic, not a submitted rebalance.`, source: `PancakeSwap V3 pool ${pool}`, updatedAt: new Date().toISOString() };
+    const risk = rangeRisk(tick, lowerTick, upperTick);
+    const body = { ok: true, live: true, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', pool, feeTier: Number(decodeUint(feeHex)), token0, token1, liquidity, tick, tickSpacing, suggestedRange: { lowerTick, upperTick, method: 'heuristic monitoring band around the live tick' }, risk, priceToken1PerToken0: Number.isFinite(priceToken1PerToken0) ? Number(priceToken1PerToken0.toPrecision(8)) : null, recommendation: `Current tick ${tick} is ${risk.status} for the suggested monitoring band ${lowerTick} to ${upperTick}. This is a read-only heuristic, not a submitted rebalance.`, source: `PancakeSwap V3 pool ${pool}`, updatedAt: new Date().toISOString() };
     return sendJson(res, 200, body);
   } catch (error) {
     return sendJson(res, 502, { ok: false, live: false, chain: 'BSC testnet', chainId: 97, error: 'PancakeSwap testnet data unavailable', detail: error.message });
