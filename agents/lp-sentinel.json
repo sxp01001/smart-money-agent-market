@@ -6,6 +6,7 @@
   "status": "live-read-only-testnet",
   "protocols": ["PancakeSwap V3"],
   "endpoint": "/api/agents/lp-sentinel/recommendation",
+  "pool": "0x01354b3fd448e253572989b3fe15213cbed6565a",
   "dataSource": "PancakeSwap V3 Factory and pool state via BSC testnet JSON-RPC",
   "execution": "read-only; no transaction submission",
   "erc8004Identity": "REPLACE_WITH_AGENT_ID",

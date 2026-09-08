@@ -8,6 +8,7 @@ const port = Number(process.env.PORT || 4173);
 const bscRpcHost = process.env.BSC_RPC_HOST || 'bsc-testnet-rpc.publicnode.com';
 const bscChainId = 97;
 const pancakeV3Factory = (process.env.PANCAKE_V3_FACTORY || '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865').toLowerCase();
+const defaultPool = (process.env.LP_SENTINEL_POOL_ADDRESS || '0x01354b3fd448e253572989b3fe15213cbed6565a').toLowerCase();
 const defaultTokenA = (process.env.LP_SENTINEL_TOKEN_A || '0xae13d989dac2f0debff460ac112a837c89baa7cd').toLowerCase();
 const defaultTokenB = (process.env.LP_SENTINEL_TOKEN_B || '0x66e972502a34a625828c544a1914e8d8cc2a9de5').toLowerCase();
 const feeTiers = [100, 500, 2500, 3000, 10000];
@@ -85,8 +86,8 @@ function callData(to, data) { return rpcCall('eth_call', [{ to, data }, 'latest'
 
 async function lpRecommendation(res) {
   try {
-    const configuredPool = process.env.LP_SENTINEL_POOL_ADDRESS;
-    let pool = configuredPool && /^0x[a-fA-F0-9]{40}$/.test(configuredPool) ? configuredPool.toLowerCase() : null;
+    const configuredPool = process.env.LP_SENTINEL_POOL_ADDRESS || defaultPool;
+    let pool = /^0x[a-fA-F0-9]{40}$/.test(configuredPool) ? configuredPool.toLowerCase() : null;
     let fee = null;
     let tokenA = defaultTokenA;
     let tokenB = defaultTokenB;
@@ -102,8 +103,8 @@ async function lpRecommendation(res) {
     if (!pool) {
       return sendJson(res, 200, { ok: true, live: false, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', status: 'no-pool-found', message: 'No configured PancakeSwap V3 testnet pool was found for the selected pair. Set LP_SENTINEL_POOL_ADDRESS or provide a funded testnet pool.', source: `PancakeSwap V3 Factory ${pancakeV3Factory}`, updatedAt: new Date().toISOString() });
     }
-    const [token0Hex, token1Hex, liquidityHex, slot0Hex] = await Promise.all([
-      callData(pool, '0x0dfe1681'), callData(pool, '0xd21220a7'), callData(pool, '0x1a686502'), callData(pool, '0x3850c7bd')
+    const [token0Hex, token1Hex, liquidityHex, slot0Hex, feeHex] = await Promise.all([
+      callData(pool, '0x0dfe1681'), callData(pool, '0xd21220a7'), callData(pool, '0x1a686502'), callData(pool, '0x3850c7bd'), callData(pool, '0xddca3f43')
     ]);
     const token0 = decodeAddress(token0Hex);
     const token1 = decodeAddress(token1Hex);
@@ -112,7 +113,7 @@ async function lpRecommendation(res) {
     const tick = Number(BigInt(`0x${slot0Hex.slice(66, 130)}`));
     const sqrtPrice = Number(sqrtPriceX96) / 2 ** 96;
     const priceToken1PerToken0 = sqrtPrice * sqrtPrice;
-    const body = { ok: true, live: true, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', pool, feeTier: fee, token0, token1, liquidity, tick, priceToken1PerToken0: Number.isFinite(priceToken1PerToken0) ? Number(priceToken1PerToken0.toPrecision(8)) : null, recommendation: 'Monitor the current range; this read-only pilot has not been configured to submit a rebalance transaction.', source: `PancakeSwap V3 pool ${pool}`, updatedAt: new Date().toISOString() };
+    const body = { ok: true, live: true, chain: 'BSC testnet', chainId: 97, block, agent: 'LP Sentinel', pool, feeTier: Number(decodeUint(feeHex)), token0, token1, liquidity, tick, priceToken1PerToken0: Number.isFinite(priceToken1PerToken0) ? Number(priceToken1PerToken0.toPrecision(8)) : null, recommendation: 'Monitor the current range; this read-only pilot has not been configured to submit a rebalance transaction.', source: `PancakeSwap V3 pool ${pool}`, updatedAt: new Date().toISOString() };
     return sendJson(res, 200, body);
   } catch (error) {
     return sendJson(res, 502, { ok: false, live: false, chain: 'BSC testnet', chainId: 97, error: 'PancakeSwap testnet data unavailable', detail: error.message });
